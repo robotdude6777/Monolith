@@ -638,7 +638,20 @@ public sealed partial class ShuttleSystem
                     Enable(dockedUid, component: dockedBody, shuttle: dockedShuttle);
                 }
             }
-            RemComp<FTLComponent>(dockedUid);
+            
+            // Put linked shuttles in cooldown state instead of immediately removing the component
+            if (FTLCooldown > 0f && TryComp<FTLComponent>(dockedUid, out var dockedFtl))
+            {
+                dockedFtl.State = FTLState.Cooldown;
+                dockedFtl.StateTime = StartEndTime.FromCurTime(_gameTiming, FTLCooldown);
+            }
+            else
+            {
+                RemComp<FTLComponent>(dockedUid);
+            }
+            
+            // Refresh consoles for this docked shuttle as well
+            _console.RefreshShuttleConsoles(dockedUid);
         }
 
         // Only remove visualizer after everything is in position
@@ -677,8 +690,22 @@ public sealed partial class ShuttleSystem
 
     private void UpdateFTLCooldown(Entity<FTLComponent, ShuttleComponent> entity)
     {
+        var uid = entity.Owner;
         RemCompDeferred<FTLComponent>(entity);
-        _console.RefreshShuttleConsoles(entity);
+        
+        // Find any docked shuttles that might still be in cooldown from the same FTL trip
+        // and force them to also end cooldown at the same time
+        var linkedQuery = EntityQueryEnumerator<FTLComponent>();
+        while (linkedQuery.MoveNext(out var linkedUid, out var linkedComp))
+        {
+            if (linkedComp.LinkedShuttle == uid && linkedComp.State == FTLState.Cooldown)
+            {
+                RemCompDeferred<FTLComponent>(linkedUid);
+                _console.RefreshShuttleConsoles(linkedUid);
+            }
+        }
+        
+        _console.RefreshShuttleConsoles(uid);
     }
 
     private void UpdateHyperspace()
@@ -1320,6 +1347,9 @@ public sealed partial class ShuttleSystem
                 _physics.SetLinearDamping(dockedUid, dockedBody, 0f);
                 _physics.SetAngularDamping(dockedUid, dockedBody, 0f);
             }
+            
+            // Refresh consoles for this docked shuttle as well
+            _console.RefreshShuttleConsoles(dockedUid);
         }
         
         comp.StateTime = StartEndTime.FromCurTime(_gameTiming, comp.TravelTime - DefaultArrivalTime);
