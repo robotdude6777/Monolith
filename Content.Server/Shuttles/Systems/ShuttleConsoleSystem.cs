@@ -19,6 +19,7 @@ using Content.Shared.Timing;
 using Robust.Server.GameObjects;
 using Robust.Shared.Collections;
 using Robust.Shared.GameStates;
+using Robust.Shared.Log;
 using Robust.Shared.Map;
 using Robust.Shared.Utility;
 using Content.Shared.UserInterface;
@@ -229,31 +230,45 @@ public sealed partial class ShuttleConsoleSystem : SharedShuttleConsoleSystem
         var consoleXform = Transform(uid);
         var shuttleGrid = consoleXform.GridUid;
         
-        // If there are no docked entities in the list, toggle the FTL lock for the main shuttle
-        if (args.DockedEntities.Count == 0 && shuttleGrid != null)
+        Logger.DebugS("shuttle", $"Server received FTL lock request with {args.DockedEntities.Count} entities, enabled={args.Enabled}");
+        
+        // If the shuttleGrid is null, we can't do anything
+        if (shuttleGrid == null)
         {
-            if (TryComp<FTLLockComponent>(shuttleGrid, out var ftlLock))
-            {
-                // Only toggle if the component already exists
-                ftlLock.Enabled = !ftlLock.Enabled;
-                Dirty(shuttleGrid.Value, ftlLock);
-            }
-            // Do not add the component if it doesn't exist - that's the shipyard's job
+            Logger.DebugS("shuttle", $"Cannot toggle FTL lock: console {ToPrettyString(uid)} is not on a grid");
             return;
         }
         
-        // Process each docked entity normally
+        bool processedMainGrid = false;
+        
+        // Process each entity in the request
         foreach (var dockedEntityNet in args.DockedEntities)
         {
             var dockedEntity = GetEntity(dockedEntityNet);
             
+            // Check if this is the main shuttle grid
+            if (dockedEntity == shuttleGrid)
+            {
+                processedMainGrid = true;
+            }
+            
             if (TryComp<FTLLockComponent>(dockedEntity, out var ftlLock))
             {
-                // Only toggle if the component already exists
-                ftlLock.Enabled = !ftlLock.Enabled;
+                Logger.DebugS("shuttle", $"Setting FTL lock for {ToPrettyString(dockedEntity)} to {args.Enabled}");
+                ftlLock.Enabled = args.Enabled;
                 Dirty(dockedEntity, ftlLock);
             }
-            // Do not add the component if it doesn't exist - that's the shipyard's job
+        }
+        
+        // If we didn't process the main grid yet, do it now
+        if (!processedMainGrid && shuttleGrid != null)
+        {
+            if (TryComp<FTLLockComponent>(shuttleGrid, out var ftlLock))
+            {
+                Logger.DebugS("shuttle", $"Setting FTL lock for main grid {ToPrettyString(shuttleGrid.Value)} to {args.Enabled}");
+                ftlLock.Enabled = args.Enabled;
+                Dirty(shuttleGrid.Value, ftlLock);
+            }
         }
     }
 

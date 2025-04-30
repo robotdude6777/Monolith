@@ -20,7 +20,19 @@
         <controls1:StripeBack MinSize="48 48">
             <controls:Label Name="DockingPortsLabel" Text="{controls:Loc 'shuttle-console-docks-label'}" HorizontalAlignment="Center"/>
         </controls1:StripeBack>
-        <controls:Button Name="FTLLockButton" Text="{controls:Loc 'shuttle-console-ftl-lock'}" Margin="5 5 5 5"/>
+        <!-- FTL Lock Toggle Buttons -->
+        <controls:BoxContainer Orientation="Horizontal" HorizontalAlignment="Stretch" Margin="5 5 5 5">
+            <controls:Button Name="FTLLockEnabledButton" 
+                             Text="{controls:Loc 'shuttle-console-ftl-lock-enabled'}" 
+                             ToggleMode="True"
+                             HorizontalExpand="True"
+                             StyleClasses="ButtonSquare"/>
+            <controls:Button Name="FTLLockDisabledButton" 
+                             Text="{controls:Loc 'shuttle-console-ftl-lock-disabled'}" 
+                             ToggleMode="True"
+                             HorizontalExpand="True"
+                             StyleClasses="ButtonSquare"/>
+        </controls:BoxContainer>
         <controls:Button Name="UndockAllButton" Text="{controls:Loc 'shuttle-console-undock-all'}" Margin="5 5 5 5"/>
         <controls:ScrollContainer VerticalExpand="True" HScrollEnabled="False"
                                   ReturnMeasure="True">
