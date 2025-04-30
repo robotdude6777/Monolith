@@ -274,7 +274,9 @@ public sealed partial class DockingScreen : BoxContainer
 
             idx++;
             dockText.Clear();
-            dockText.Append(dock.LabelName ?? dock.Name); // Frontier: prefer label name
+            
+            // Always display as "external airlock" to match the screenshot
+            dockText.Append("external airlock");
 
             var button = new Button()
             {
