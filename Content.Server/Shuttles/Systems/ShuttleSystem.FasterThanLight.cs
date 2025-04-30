@@ -393,8 +393,33 @@ public sealed partial class ShuttleSystem
                 continue;
                 
             // If the docked shuttle has no FTLLockComponent or has it but it's disabled, skip adding it
+            // to the FTL travel group, but still check its connections for potential conflicts
             if (!TryComp<FTLLockComponent>(dockedGridUid, out var ftlLock) || !ftlLock.Enabled)
+            {
+                // Still check this shuttle's connections without adding it to dockedShuttles
+                var nestedDocks = _dockSystem.GetDocks(dockedGridUid);
+                foreach (var nestedDock in nestedDocks)
+                {
+                    if (!TryComp<DockingComponent>(nestedDock, out var nestedDockComp) || 
+                        nestedDockComp.Docked == false || 
+                        nestedDockComp.DockedWith == null)
+                        continue;
+                        
+                    var nestedDockedGridUid = _transform.GetParentUid(nestedDockComp.DockedWith.Value);
+                    // Skip the original grid and any invalid grids
+                    if (nestedDockedGridUid == EntityUid.Invalid || 
+                        nestedDockedGridUid == shuttleUid || 
+                        !HasComp<ShuttleComponent>(nestedDockedGridUid))
+                        continue;
+                        
+                    // Check if this grid should be added to the FTL travel group
+                    if (TryComp<FTLLockComponent>(nestedDockedGridUid, out var nestedFtlLock) && nestedFtlLock.Enabled)
+                    {
+                        GetAllDockedShuttles(nestedDockedGridUid, dockedShuttles);
+                    }
+                }
                 continue;
+            }
                 
             // If we haven't processed this grid yet, recursively get its docked shuttles
             if (!dockedShuttles.Contains(dockedGridUid))
@@ -459,6 +484,30 @@ public sealed partial class ShuttleSystem
                     !dockedShuttles.Contains(connectedEntityUid))
                 {
                     _dockSystem.Undock((dock, dockComp));
+                }
+            }
+            
+            // Also check docks on other shuttles to handle the case where a shuttle with disabled FTLLock is in our dockedShuttles
+            // but has docks to entities outside our FTL group
+            foreach (var dockedShuttleUid in dockedShuttles)
+            {
+                if (dockedShuttleUid == uid)
+                    continue;
+                    
+                var dockedShuttleDocks = _dockSystem.GetDocks(dockedShuttleUid);
+                foreach (var dock in dockedShuttleDocks)
+                {
+                    if (!TryComp<DockingComponent>(dock, out var dockComp) || !dockComp.Docked || dockComp.DockedWith == null)
+                        continue;
+                        
+                    var connectedEntityUid = _transform.GetParentUid(dockComp.DockedWith.Value);
+                    
+                    // If the connected entity is not in our FTL group, undock it
+                    if (connectedEntityUid == EntityUid.Invalid || 
+                        !dockedShuttles.Contains(connectedEntityUid))
+                    {
+                        _dockSystem.Undock((dock, dockComp));
+                    }
                 }
             }
         }
