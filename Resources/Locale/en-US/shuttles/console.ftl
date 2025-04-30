@@ -57,6 +57,7 @@ shuttle-console-docked = Docked Objects
 shuttle-console-view = View
 shuttle-console-undock = Undock
 shuttle-console-undock-all = Undock All
+shuttle-console-ftl-lock = FTL Lock
 shuttle-console-dock = Dock
 shuttle-console-docks-label = Docks
 

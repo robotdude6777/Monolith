@@ -65,6 +65,7 @@ public sealed partial class ShuttleConsoleSystem : SharedShuttleConsoleSystem
         {
             subs.Event<ShuttleConsoleFTLBeaconMessage>(OnBeaconFTLMessage);
             subs.Event<ShuttleConsoleFTLPositionMessage>(OnPositionFTLMessage);
+            subs.Event<ToggleFTLLockRequestMessage>(OnToggleFTLLock);
             subs.Event<BoundUIClosedEvent>(OnConsoleUIClose);
         });
 
@@ -215,8 +216,80 @@ public sealed partial class ShuttleConsoleSystem : SharedShuttleConsoleSystem
     {
         if (ent.Comp.Console != null)
         {
-            RemovePilot(ent, ent);
+            RemovePilot(ent);
         }
+    }
+
+    /// <summary>
+    /// Handles FTL lock toggling for docked shuttles
+    /// </summary>
+    private void OnToggleFTLLock(EntityUid uid, ShuttleConsoleComponent component, ToggleFTLLockRequestMessage args)
+    {
+        // Get the console's grid (shuttle)
+        var consoleXform = Transform(uid);
+        var shuttleGrid = consoleXform.GridUid;
+        
+        // If there are no docked entities in the list, toggle the FTL lock for the main shuttle
+        if (args.DockedEntities.Count == 0 && shuttleGrid != null)
+        {
+            if (TryComp<FTLLockComponent>(shuttleGrid, out var ftlLock))
+            {
+                // Only toggle if the component already exists
+                ftlLock.Enabled = !ftlLock.Enabled;
+                Dirty(shuttleGrid.Value, ftlLock);
+            }
+            // Do not add the component if it doesn't exist - that's the shipyard's job
+            return;
+        }
+        
+        // Process each docked entity normally
+        foreach (var dockedEntityNet in args.DockedEntities)
+        {
+            var dockedEntity = GetEntity(dockedEntityNet);
+            
+            if (TryComp<FTLLockComponent>(dockedEntity, out var ftlLock))
+            {
+                // Only toggle if the component already exists
+                ftlLock.Enabled = !ftlLock.Enabled;
+                Dirty(dockedEntity, ftlLock);
+            }
+            // Do not add the component if it doesn't exist - that's the shipyard's job
+        }
+    }
+
+    /// <summary>
+    /// Sets the FTL lock state of a shuttle entity.
+    /// </summary>
+    /// <param name="shuttleUid">The shuttle entity to modify</param>
+    /// <param name="dockedEntities">List of docked entities to also modify, or empty to only modify the shuttle</param>
+    /// <param name="enabled">The desired FTL lock state (true to enable, false to disable)</param>
+    /// <returns>True if at least one entity was modified, false otherwise</returns>
+    public bool ToggleFTLLock(EntityUid shuttleUid, List<NetEntity> dockedEntities, bool enabled)
+    {
+        var modified = false;
+        
+        // Modify the main shuttle if it has the component
+        if (TryComp<FTLLockComponent>(shuttleUid, out var shuttleFtlLock))
+        {
+            shuttleFtlLock.Enabled = enabled;
+            Dirty(shuttleUid, shuttleFtlLock);
+            modified = true;
+        }
+        
+        // Modify any docked entities if provided
+        foreach (var dockedEntityNet in dockedEntities)
+        {
+            var dockedEntity = GetEntity(dockedEntityNet);
+            
+            if (TryComp<FTLLockComponent>(dockedEntity, out var ftlLock))
+            {
+                ftlLock.Enabled = enabled;
+                Dirty(dockedEntity, ftlLock);
+                modified = true;
+            }
+        }
+        
+        return modified;
     }
 
     /// <summary>

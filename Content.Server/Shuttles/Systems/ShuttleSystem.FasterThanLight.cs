@@ -391,6 +391,11 @@ public sealed partial class ShuttleSystem
             var dockedGridUid = _transform.GetParentUid(dockComp.DockedWith.Value);
             if (dockedGridUid == EntityUid.Invalid || !HasComp<ShuttleComponent>(dockedGridUid))
                 continue;
+                
+            // If the docked shuttle has no FTLLockComponent or has it but it's disabled, skip adding it
+            if (!TryComp<FTLLockComponent>(dockedGridUid, out var ftlLock) || !ftlLock.Enabled)
+                continue;
+                
             // If we haven't processed this grid yet, recursively get its docked shuttles
             if (!dockedShuttles.Contains(dockedGridUid))
             {
