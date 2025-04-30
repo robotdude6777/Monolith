@@ -285,6 +285,38 @@ public sealed partial class ShuttleSystem
         float? hyperspaceTime = null,
         string? priorityTag = null)
     {
+        // Check if destination is an expedition map
+        bool isExpedition = IsTargetExpedition(coordinates);
+        
+        // If going to an expedition, undock all other shuttles before FTL
+        if (isExpedition)
+        {
+            // Get all docked shuttles
+            var dockedShuttles = new HashSet<EntityUid>();
+            GetAllDockedShuttles(shuttleUid, dockedShuttles);
+            
+            Log.Info($"FTL to expedition detected. Shuttle {ToPrettyString(shuttleUid)} has {dockedShuttles.Count} docked shuttles (including self)");
+            
+            // Undock all other shuttles
+            foreach (var dockedUid in dockedShuttles)
+            {
+                if (dockedUid == shuttleUid)
+                    continue;
+                
+                Log.Info($"Undocking {ToPrettyString(dockedUid)} from {ToPrettyString(shuttleUid)} before expedition FTL");
+                
+                // Find docks connecting this shuttle to others
+                var dockedShuttleDocks = _dockSystem.GetDocks(dockedUid);
+                foreach (var dockPort in dockedShuttleDocks)
+                {
+                    if (!TryComp<DockingComponent>(dockPort, out var dockComp) || !dockComp.Docked || dockComp.DockedWith == null)
+                        continue;
+                    
+                    _dockSystem.Undock((dockPort, dockComp));
+                }
+            }
+        }
+
         if (!TrySetupFTL(shuttleUid, component, out var hyperspace))
             return;
 
@@ -328,6 +360,39 @@ public sealed partial class ShuttleSystem
 
         if (!dest.Enabled)
             return;
+            
+        // Check if destination is in an expedition map
+        var targetCoords = new EntityCoordinates(target, Vector2.Zero);
+        bool isExpedition = IsTargetExpedition(targetCoords);
+        
+        // If going to an expedition, undock all other shuttles before FTL
+        if (isExpedition)
+        {
+            // Get all docked shuttles
+            var dockedShuttles = new HashSet<EntityUid>();
+            GetAllDockedShuttles(shuttleUid, dockedShuttles);
+            
+            Log.Info($"FTL dock to expedition detected. Shuttle {ToPrettyString(shuttleUid)} has {dockedShuttles.Count} docked shuttles (including self)");
+            
+            // Undock all other shuttles
+            foreach (var dockedUid in dockedShuttles)
+            {
+                if (dockedUid == shuttleUid)
+                    continue;
+                
+                Log.Info($"Undocking {ToPrettyString(dockedUid)} from {ToPrettyString(shuttleUid)} before expedition FTL");
+                
+                // Find docks connecting this shuttle to others
+                var dockedShuttleDocks = _dockSystem.GetDocks(dockedUid);
+                foreach (var dockPort in dockedShuttleDocks)
+                {
+                    if (!TryComp<DockingComponent>(dockPort, out var dockComp) || !dockComp.Docked || dockComp.DockedWith == null)
+                        continue;
+                    
+                    _dockSystem.Undock((dockPort, dockComp));
+                }
+            }
+        }
 
         var hyperspace = EnsureComp<FTLComponent>(shuttleUid);
         SetupFTL(hyperspace, startupTime, hyperspaceTime, priorityTag);
@@ -429,6 +494,9 @@ public sealed partial class ShuttleSystem
         }
     }
 
+    /// <summary>
+    /// Sets up FTL for a shuttle after a console command.
+    /// </summary>
     private bool TrySetupFTL(EntityUid uid, ShuttleComponent shuttle, [NotNullWhen(true)] out FTLComponent? component)
     {
         component = null;
@@ -526,6 +594,20 @@ public sealed partial class ShuttleSystem
         // Make sure the map is setup before we leave to avoid pop-in (e.g. parallax).
         EnsureFTLMap();
         return true;
+    }
+
+    /// <summary>
+    /// Checks if the target coordinates are in an expedition map.
+    /// </summary>
+    private bool IsTargetExpedition(EntityCoordinates coordinates)
+    {
+        if (!Exists(coordinates.EntityId))
+            return false;
+        
+        var mapId = _transform.GetMapId(coordinates);
+        var mapUid = _mapSystem.GetMap(mapId);
+        
+        return HasComp<SalvageExpeditionComponent>(mapUid);
     }
 
     /// <summary>
