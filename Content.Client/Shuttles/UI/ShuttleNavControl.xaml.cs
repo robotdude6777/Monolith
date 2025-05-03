@@ -81,6 +81,7 @@ public sealed partial class ShuttleNavControl : BaseShuttleControl
 
     public ShuttleNavControl() : base(64f, 256f, 256f)
     {
+        IoCManager.InjectDependencies(this);
         RobustXamlLoader.Load(this);
         _shuttles = EntManager.System<SharedShuttleSystem>();
         _transform = EntManager.System<SharedTransformSystem>();
@@ -151,16 +152,15 @@ public sealed partial class ShuttleNavControl : BaseShuttleControl
     {
         base.FrameUpdate(args);
 
-        _updateAccumulator += args.DeltaSeconds;
+        // Don't accumulate update time if not visible or no console
+        if (!Visible || _consoleEntity == null) 
+            return;
 
-        if (_updateAccumulator >= RadarUpdateInterval)
-        {
-            _updateAccumulator = 0; // I'm not subtracting because frame updates can majorly lag in a way normal ones cannot.
+        // Request blips using the optimized system which has built-in throttling
+        if (_consoleEntity != null)
+            _blips.RequestBlips((EntityUid)_consoleEntity);
 
-            if (_consoleEntity != null)
-                _blips.RequestBlips((EntityUid)_consoleEntity);
-        }
-
+        // Handle mouse events for firing
         if (_isMouseDown && _isMouseInside)
         {
             var currentTime = IoCManager.Resolve<IGameTiming>().CurTime.TotalSeconds;
@@ -494,51 +494,55 @@ public sealed partial class ShuttleNavControl : BaseShuttleControl
         var origin = ScalePosition(-new Vector2(Offset.X, -Offset.Y));
         handle.DrawLine(origin, origin + angle.ToVec() * ScaledMinimapRadius * 1.42f, Color.Red.WithAlpha(0.1f));
 
-        // Get raw blips with grid information
-        var rawBlips = _blips.GetRawBlips();
-
-        // Prepare view bounds for culling
-        var monoViewBounds = new Box2(-3f, -3f, Size.X + 3f, Size.Y + 3f);
-
-        // Draw blips using the same grid-relative transformation approach as docks
-        foreach (var blip in rawBlips)
+        // Only try to draw blips if we have a valid console
+        if (_consoleEntity != null)
         {
-            Vector2 blipPosInView;
+            // Get raw blips with grid information efficiently 
+            var rawBlips = _blips.GetRawBlips((EntityUid)_consoleEntity);
 
-            // Handle differently based on if there's a grid
-            if (blip.Grid == null)
-            {
-                // For world-space blips without a grid, use standard world transformation
-                blipPosInView = Vector2.Transform(blip.Position, worldToShuttle * shuttleToView);
-            }
-            else if (EntManager.TryGetEntity(blip.Grid, out var gridEntity))
-            {
-                // For grid-relative blips, transform using the grid's transform
-                var gridToWorld = _transform.GetWorldMatrix(gridEntity.Value);
-                var gridToView = gridToWorld * worldToShuttle * shuttleToView;
+            // Prepare view bounds for culling - reduces unnecessary draw calls
+            var blipViewBounds = new Box2(-3f, -3f, Size.X + 3f, Size.Y + 3f);
 
-                // Transform the grid-local position
-                blipPosInView = Vector2.Transform(blip.Position, gridToView);
-            }
-            else
+            // Draw blips using the same grid-relative transformation approach as docks
+            foreach (var blip in rawBlips)
             {
-                // Skip blips with invalid grid references
-                continue;
-            }
+                Vector2 blipPosInView;
 
-            // Check if this blip is within view bounds before drawing
-            if (monoViewBounds.Contains(blipPosInView))
-            {
-                if (blip.Shape == RadarBlipShape.Ring)
+                // Handle differently based on if there's a grid
+                if (blip.Grid == null)
                 {
-                    // For Ring shapes, use the real radius (scaled by MinimapScale) for position
-                    // but use a separate drawing method that keeps a constant ring thickness
-                    DrawShieldRing(handle, blipPosInView, blip.Scale * MinimapScale, blip.Color.WithAlpha(0.8f));
+                    // For world-space blips without a grid, use standard world transformation
+                    blipPosInView = Vector2.Transform(blip.Position, worldToShuttle * shuttleToView);
+                }
+                else if (EntManager.TryGetEntity(blip.Grid, out var gridEntity))
+                {
+                    // For grid-relative blips, transform using the grid's transform
+                    var gridToWorld = _transform.GetWorldMatrix(gridEntity.Value);
+                    var gridToView = gridToWorld * worldToShuttle * shuttleToView;
+
+                    // Transform the grid-local position
+                    blipPosInView = Vector2.Transform(blip.Position, gridToView);
                 }
                 else
                 {
-                    // For other shapes, use the regular drawing method
-                    DrawBlipShape(handle, blipPosInView, blip.Scale * 3f, blip.Color.WithAlpha(0.8f), blip.Shape);
+                    // Skip blips with invalid grid references
+                    continue;
+                }
+
+                // Check if this blip is within view bounds before drawing - improves performance
+                if (blipViewBounds.Contains(blipPosInView))
+                {
+                    if (blip.Shape == RadarBlipShape.Ring)
+                    {
+                        // For Ring shapes, use the real radius (scaled by MinimapScale) for position
+                        // but use a separate drawing method that keeps a constant ring thickness
+                        DrawShieldRing(handle, blipPosInView, blip.Scale * MinimapScale, blip.Color.WithAlpha(0.8f));
+                    }
+                    else
+                    {
+                        // For other shapes, use the regular drawing method
+                        DrawBlipShape(handle, blipPosInView, blip.Scale * 3f, blip.Color.WithAlpha(0.8f), blip.Shape);
+                    }
                 }
             }
         }
